@@ -1,0 +1,15 @@
+Usage of each file:
+C.txt - cipher file
+M.txt - text file
+key.txt - key for caser encode algorithm
+key_vigenre.txt - key for vigenre encode algorithm
+
+caser.h - head file for caser algorithm class
+vigenre.h - head file for vigenre algorithm class
+
+caser_encode.cpp
+caser_decode.cpp - demo for caser encode(decode) algorithm
+
+vigenre_encode.cpp
+vigenre_decode.cpp - demo for vigenre encode(decode) algorithm
+
