@@ -27,7 +27,8 @@ int get_primitive_root( int prime )
 
 int main()
 {
-	prime = 97 ;
+	ifstream fin( "prime.txt" ) ;
+	fin >> prime ;
 	a = get_primitive_root( prime ) ;
 
 	Diffie_hellman person_a( 36 ) , person_b( 58 ) ;
