@@ -55,7 +55,6 @@ Key::Key( const short * data )
 {
 	set_key( data ) ;
 }
-
 void Key::set_key( const short *data )
 {
 	memcpy( this -> key , data , sizeof( short ) * KEY_LENGTH ) ;
@@ -63,7 +62,7 @@ void Key::set_key( const short *data )
 
 void Key::set_key( const string str )
 {
-	if ( str .length() > 7 ) 
+	if ( str .length() > 8 ) 
 	{
 		printf( "Error: The length of string not correct.\n" ) ;
 		exit( 1 ) ;
@@ -79,12 +78,7 @@ void Key::set_key( const string str )
 			x /= 2 ;
 		}
 	}
-	for ( int i = KEY_LENGTH ; i >= 0 ; i -- )
-		if ( i % 8 == 7 )
-			this -> key[ i ] = 0 ;
-		else
-			this -> key[ i ] = this -> key[ i - ( i + 1 ) / 8 ] ;
-	generate_checksum() ;
+	//generate_checksum() ;
 }
 
 void Key::generate_checksum()
@@ -114,7 +108,7 @@ void Key::PC1_transform()
 	for ( int i = 0 ; i < 8 ; i ++ )
 		for ( int j = 0 ; j < 7 ; j ++ )
 			this -> key[ i * 8 + j ] = cici[ PC1[ i ] [ j ] - 1 ] ;
-	generate_checksum() ;
+	//generate_checksum() ;
 }
 
 const int PC2[ 8 ] [ 6 ] = {
@@ -147,7 +141,7 @@ short* Key::PC2_transform()
 }
 
 const int LS[] = {1,1,2,2,2,2,2,2,1,2,2,2,2,2,2,1} ;
-void Key::LS_transform( int turn )
+void Key::LS_transform( int turn ) // Begin with 0
 {
 	short cici[ KEY_LENGTH ] ;
 	memcpy( cici , this -> key , sizeof( short ) * KEY_LENGTH ) ;
@@ -156,7 +150,8 @@ void Key::LS_transform( int turn )
 	{
 		if ( i % 8 == 7 ) continue ;
 		int x = i + LS[ turn ] ;
-		x = ( x + ( x % 8 == 7 ) ) % HALF_KEY_LENGTH ;
+		if ( x % 8 == 7 || ( LS[ turn ] == 2 && ( x - 1 ) % 8 == 7 ) ) x ++ ;
+		if ( x >= HALF_KEY_LENGTH ) x -= HALF_KEY_LENGTH ;
 		this -> key[ i ] = cici[ x ] ;
 	}
 
@@ -164,10 +159,11 @@ void Key::LS_transform( int turn )
 	{
 		if ( i % 8 == 7 ) continue ;
 		int x = i + LS[ turn ] ;
-		x = ( x + ( x % 8 == 7 ) ) % KEY_LENGTH ;
+		if ( x % 8 == 7 || ( LS[ turn ] == 2 && ( x - 1 ) % 8 == 7 ) ) x ++ ;
+		if ( x >= KEY_LENGTH ) x -= HALF_KEY_LENGTH ;
 		this -> key[ i ] = cici[ x ] ;
 	}
-	generate_checksum() ;
+	//generate_checksum() ;
 }
 
 short Key::element( int i )
@@ -210,7 +206,7 @@ public:
 	void set_cipher( string ) ; // Rewrite cipher with string 
 
 	void iteration( int ) ; // One encode iteration for DES algorithm
-					   // This iteration will not change L and R
+	void iteration_decode( int ) ; // One decode iteration for DES algorithm
 
 	void PU_transform() ; // Doing PU_transform before DES iteration
 	void PU_slide_transform() ; // Doing PU_transform after DES iteration
@@ -223,6 +219,7 @@ public:
 
 	short element( int i ) ; // Get ith element of text
 	void encode() ; // Start DES encode algorithm
+	void decode() ;
 } ;
 
 DES_machine::DES_machine()
@@ -293,31 +290,101 @@ void DES_machine::encode()
 {
 	PU_transform() ;
 	this -> cipher .PC1_transform() ;
+
 	states_code = 1 ;
-	for ( int iteration_num = 1 ; iteration_num <= 1 ; iteration_num ++ )
+	for ( int iteration_num = 1 ; iteration_num <= 16 ; iteration_num ++ )
+	{
 		iteration( iteration_num ) ;
+		/*
+		printf( "Case %d: " , iteration_num ) ;
+		for ( int i = 0 ; i < 64 ; i ++ )
+		{
+			printf( "%d" , this -> text[ i ] ) ;
+			if ( i % 32 == 31 ) printf( " " ) ;
+		}
+		printf( "\n" ) ;
+		*/
+	}
+	PU_slide_transform() ;
+}
+
+void DES_machine::decode()
+{
+	PU_transform() ;
+	this -> cipher .PC1_transform() ;
+	states_code = 1 ;
+
+	iteration_decode( 1 ) ;
+
 	PU_slide_transform() ;
 }
 
 void DES_machine::iteration( int turn )
 {
-	this -> cipher .LS_transform( turn ) ;
+	// Save R part
+	short tmp[ 32 ] ;
+	memcpy( tmp , &( this -> text[ 32 ] ) , sizeof( short ) * 32 ) ; 
+
+	// Cipher to LS transform
+	this -> cipher .LS_transform( turn - 1 ) ;
+
+	// S box operate
 	S_box_transform( E_transform() , this -> cipher .PC2_transform() ) ;
+
+	// R part to P transform
 	P_transform() ;
+
+	// Xor L part
 	for ( int i = HALF_DES_TEXT_LENGTH ; i < DES_TEXT_LENGTH ; i ++ )
 		this -> text[ i ] ^= this -> text[ i - HALF_DES_TEXT_LENGTH ] ;
-	if ( turn != 16 ) reverse_transform() ;
+
+	// Copy R part to L part 
+	memcpy( this -> text , tmp , sizeof( short ) * 32 ) ;
+
+	// If turn == 16 will not reverse
+	if ( turn == 16 ) reverse_transform() ;
+}
+
+void DES_machine::iteration_decode( int turn )
+{
+	// Save cipher and Doing LS transform
+	this -> cipher .LS_transform( turn - 1 ) ;
+	Key tmp_cipher = this -> cipher ;
+
+	// Doing Keyi+1 first
+	if ( turn < 16 ) iteration_decode( turn + 1 ) ;
+
+	// Save R part
+	short tmp[ 32 ] ;
+	memcpy( tmp , &( this -> text[ 32 ] ) , sizeof( short ) * 32 ) ; 
+
+	// S box operate with tmp_cipher
+	S_box_transform( E_transform() , tmp_cipher .PC2_transform() ) ;
+
+	// R part to P transform
+	P_transform() ;
+
+	// Xor L part
+	for ( int i = HALF_DES_TEXT_LENGTH ; i < DES_TEXT_LENGTH ; i ++ )
+		this -> text[ i ] ^= this -> text[ i - HALF_DES_TEXT_LENGTH ] ;
+
+	// Copy R part to L part
+	memcpy( this -> text , tmp , sizeof( short ) * 32 ) ;
+
+	// If turn == 1 will not reverse
+	if ( turn == 1 ) reverse_transform() ;
 }
 
 int S[ 8 ] [ 64 ] = {
-	{14,0,4,15,13,7,1,4,2,14,15,2,11,13,8,1,3,10,10,6,6,12,12,11,5,9,9,5,0,3,7,8,4,15,1,12,14,8,8,2,13,4,6,9,2,1,11,7,15,5,12,11,9,3,7,14,3,10,10,0,5,6,0,13} ,
-	{15,3,1,13,8,4,14,7,6,15,11,2,3,8,4,14,9,12,7,0,2,1,13,10,12,6,0,9,5,11,10,5,0,13,14,8,7,10,11,1,10,3,4,15,13,4,1,2,5,11,8,6,12,7,6,12,9,0,3,5,2,14,15,9} ,
-	{10,13,0,7,9,0,14,9,6,3,3,4,15,6,5,10,1,2,13,8,12,5,7,14,11,12,4,11,2,15,8,1,13,1,6,10,4,13,9,0,8,6,15,9,3,8,0,7,11,4,1,15,2,14,12,3,5,11,10,5,14,2,7,12} ,
-	{7,13,13,8,14,11,3,5,0,6,6,15,9,0,10,3,1,4,2,7,8,2,5,12,11,1,12,10,4,14,15,9,10,3,6,15,9,0,0,6,12,10,11,1,7,13,13,8,15,9,1,4,3,5,14,11,5,12,2,7,8,2,4,14} ,
-	{2,14,12,11,4,2,1,12,7,4,10,7,11,13,6,1,8,5,5,0,3,15,15,10,13,3,0,9,14,8,9,6,4,11,2,8,1,12,11,7,10,1,13,14,7,2,8,13,15,6,9,15,12,0,5,9,6,10,3,4,0,5,14,3} ,
-	{12,10,1,15,10,4,15,2,9,7,2,12,6,9,8,5,0,6,13,1,3,13,4,14,14,0,7,11,5,3,11,8,9,4,14,3,15,2,5,12,2,9,8,5,12,15,3,10,7,11,0,14,4,1,10,7,1,6,13,0,11,8,6,13} ,
-	{4,13,11,0,2,11,14,7,15,4,0,9,8,1,13,10,3,14,12,3,9,5,7,12,5,2,10,15,6,8,1,6, 1,6,4,11,11,13,13,8,12,1,3,4,7,10,14,7,10,9,15,5,6,0,8,15,0,14,5,2,9,3,2,12} ,
-	{8,1,13,15,2,13,8,8,4,10,6,3,15,7,11,4,1,12,10,5,9,6,3,11,14,0,5,14,0,9,12,2,7,2,11,1,4,14,1,7,9,4,12,10,14,8,2,13,0,15,6,12,10,9,13,0,15,3,3,5,5,6,8,11}
+	{14,0,4,15,13,7,1,4,2,14,15,2,11,13,8,1,3,10,10,6,6,12,12,11,5,9,9,5,0,3,7,8,4,15,1,12,14,8,8,2,13,4,6,9,2,1,11,7,15,5,12,11,9,3,7,14,3,10,10,0,5,6,0,13} , // S1
+	{15,3,1,13,8,4,14,7,6,15,11,2,3,8,4,14,9,12,7,0,2,1,13,10,12,6,0,9,5,11,10,5,0,13,14,8,7,10,11,1,10,3,4,15,13,4,1,2,5,11,8,6,12,7,6,12,9,0,3,5,2,14,15,9} , // S2 
+	{10,13,0,7,9,0,14,9,6,3,3,4,15,6,5,10,1,2,13,8,12,5,7,14,11,12,4,11,2,15,8,1,13,1,6,10,4,13,9,0,8,6,15,9,3,8,0,7,11,4,1,15,2,14,12,3,5,11,10,5,14,2,7,12} , // S3
+	{7,13,13,8,14,11,3,5,0,6,6,15,9,0,10,3,1,4,2,7,8,2,5,12,11,1,12,10,4,14,15,9,10,3,6,15,9,0,0,6,12,10,11,1,7,13,13,8,15,9,1,4,3,5,14,11,5,12,2,7,8,2,4,14} , // S4
+	{2,14,12,11,4,2,1,12,7,4,10,7,11,13,6,1,8,5,5,0,3,15,15,10,13,3,0,9,14,8,9,6,4,11,2,8,1,12,11,7,10,1,13,14,7,2,8,13,15,6,9,15,12,0,5,9,6,10,3,4,0,5,14,3} , // S5
+	{12,10,1,15,10,4,15,2,9,7,2,12,6,9,8,5,0,6,13,1,3,13,4,14,14,0,7,11,5,3,11,8,9,4,14,3,15,2,5,12,2,9,8,5,12,15,3,10,7,11,0,14,4,1,10,7,1,6,13,0,11,8,6,13} , // S6
+	{4,13,11,0,2,11,14,7,15,4,0,9,8,1,13,10,3,14,12,3,9,5,7,12,5,2,10,15,6,8,1,6, 1,6,4,11,11,13,13,8,12,1,3,4,7,10,14,7,10,9,15,5,6,0,8,15,0,14,5,2,9,3,2,12} , // S7
+	//{8,1,13,15,2,13,8,8,4,10,6,3,15,7,11,4,1,12,10,5,9,6,3,11,14,0,5,14,0,9,12,2,7,2,11,1,4,14,1,7,9,4,12,10,14,8,2,13,0,15,6,12,10,9,13,0,15,3,3,5,5,6,8,11} // S8
+	{13,1,2,15,8,13,4,8,6,10,15,3,11,7,1,4,10,12,9,5,3,6,14,11,5,0,0,14,12,9,7,2,7,2,11,1,4,14,1,7,9,4,12,10,14,8,2,13,0,15,6,12,10,9,13,0,15,3,3,5,5,6,8,11}
 } ;
 void DES_machine::S_box_transform( const short * text , const short * cipher )
 {

@@ -4,22 +4,11 @@
 #include <fstream>
 using namespace std;
 
+short text[ DES_TEXT_LENGTH ] ;
+string cipher ;
 int main()
 {
-	string text ;
-	string cipher ;
-
-	ifstream fin( "M.txt" ) ;
-	fin >> text ;
-	fin .close() ;
-	fin .open( "K.txt" ) ;
-	fin >> cipher ;
-	fin .close() ;
-
-/*
-	short text[ DES_TEXT_LENGTH ] ;
-	short cipher[ KEY_LENGTH ] ;
-	ifstream fin( "M.txt" ) ;
+	ifstream fin( "C.txt" ) ;
 	for ( int i = 0 ; i < DES_TEXT_LENGTH ; i ++ )
 	{
 		char c ;
@@ -28,19 +17,13 @@ int main()
 	}
 	fin .close() ;
 	fin .open( "K.txt" ) ;
-	for ( int i = 0 ; i < KEY_LENGTH ; i ++ )
-	{
-		char c ;
-		fin >> c ;
-		cipher[ i ] = c - '0' ;
-	}
+	fin >> cipher ;
 	fin .close() ;
-*/
 
 	DES_machine D ;
 	D .set_text( text ) ;
 	D .set_cipher( cipher ) ;
-	D .encode() ;
+	D .decode() ;
 
 	for ( int i = 0 ; i < 16 ; i ++ )
 	{
@@ -51,7 +34,7 @@ int main()
 	}
 	cout << endl;
 
-	ofstream fout( "C.txt" ) ;
+	ofstream fout( "M_decode.txt" ) ;
 	for ( int i = 0 ; i < 64 ; i ++ )
 		fout << D .element( i ) ;
 	fout << endl;
