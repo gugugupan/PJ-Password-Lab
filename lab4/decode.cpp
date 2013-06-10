@@ -29,7 +29,7 @@ int main()
 	}
 
 	memcpy( tmp , text , sizeof( char ) * len ) ;
-	printf( "%s" , tmp ) ;
+	printf( "%s\n" , tmp ) ;
 	//FILE *Mout = fopen( "M.txt" , "w" ) ;
 	//fprintf( Mout , "%s" , tmp ) ;
 }
